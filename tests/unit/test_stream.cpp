@@ -12,6 +12,7 @@
 #include <opus/opus.h>
 
 #include "../../src/stream.h"
+#include "../../src/config.h"
 #include "../../src/network.h"
 #include "../../src/quic_transport.h"
 #include "../../src/usb_backend.h"
@@ -914,6 +915,10 @@ TEST(QuicNegotiationTests, AcceptsOnlyCanonicalOptInAndToken) {
   EXPECT_FALSE(quic_transport::parse_token(uppercase));
   EXPECT_EQ(quic_transport::session_url("[::1]", 48003, token),
             "quic://[::1]:48003/" + encoded);
+}
+
+TEST(QuicNegotiationTests, TransportIsDisabledByDefault) {
+  EXPECT_FALSE(config::helios.enable_quic);
 }
 
 #ifdef HAVE_MSQUIC

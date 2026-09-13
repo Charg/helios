@@ -599,6 +599,7 @@ namespace config {
     true,  // telemetry_enabled
     true,  // crash_reporting_enabled
     false,  // legacy_ordering
+    false,  // enable_quic (highly experimental)
     true,  // system_tray
     {},  // prep commands
     {},  // state commands
@@ -1304,6 +1305,7 @@ namespace config {
     bool_f(vars, "telemetry_enabled", helios.telemetry_enabled);
     bool_f(vars, "crash_reporting_enabled", helios.crash_reporting_enabled);
     bool_f(vars, "legacy_ordering", helios.legacy_ordering);
+    bool_f(vars, "enable_quic", helios.enable_quic);
     bool_f(vars, "forward_rumble", input.forward_rumble);
 
     int port = helios.port;

@@ -286,6 +286,7 @@ namespace config {
     bool telemetry_enabled;
     bool crash_reporting_enabled;
     bool legacy_ordering;
+    bool enable_quic;
     bool system_tray;
     std::vector<prep_cmd_t> prep_cmds;
     std::vector<prep_cmd_t> state_cmds;

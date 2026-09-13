@@ -14,10 +14,19 @@ const defaultMoonlightPort = 47989
 
 const config = ref(props.config)
 const effectivePort = computed(() => +config.value?.port ?? defaultMoonlightPort)
+const quicEnabled = computed(() =>
+  [true, 1, 'true', '1', 'enabled', 'enable', 'yes', 'on'].includes(config.value?.enable_quic)
+)
 </script>
 
 <template>
   <div id="network" class="md-settings-group">
+    <!-- Moonlight OS QUIC transport -->
+    <Checkbox id="enable_quic" locale-prefix="config" v-model="config.enable_quic" default="false"></Checkbox>
+    <Banner variant="warning" v-if="quicEnabled">
+      {{ $t('config.enable_quic_warning') }}
+    </Banner>
+
     <!-- UPnP -->
     <Checkbox id="upnp" locale-prefix="config" v-model="config.upnp" default="false"></Checkbox>
 
@@ -94,6 +103,12 @@ const effectivePort = computed(() => +config.value?.port ?? defaultMoonlightPort
               <td>{{ $t('config.port_udp') }}</td>
               <td class="monospace">{{+effectivePort + 9}} &ndash; {{+effectivePort + 12}}</td>
               <td></td>
+            </tr>
+            <tr v-if="quicEnabled">
+              <!-- Highly experimental Moonlight OS QUIC -->
+              <td>{{ $t('config.port_udp') }}</td>
+              <td class="monospace">{{+effectivePort + 14}}</td>
+              <td>{{ $t('config.port_quic_experimental') }}</td>
             </tr>
           </tbody>
         </table>

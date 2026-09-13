@@ -480,13 +480,18 @@ int main(int argc, char *argv[]) {
   }
 
 #ifdef HAVE_MSQUIC
-  if (quic_transport::start_server(config::nvhttp.cert, config::nvhttp.pkey,
-                                   net::map_port(quic_transport::PORT),
-                                   static_cast<std::uint16_t>(config::helios.port))) {
-    BOOST_LOG(info) << "Moonlight OS QUIC listening on UDP "sv
-                    << net::map_port(quic_transport::PORT);
+  if (config::helios.enable_quic) {
+    BOOST_LOG(warning) << "Highly experimental Moonlight OS QUIC transport is enabled"sv;
+    if (quic_transport::start_server(config::nvhttp.cert, config::nvhttp.pkey,
+                                     net::map_port(quic_transport::PORT),
+                                     static_cast<std::uint16_t>(config::helios.port))) {
+      BOOST_LOG(info) << "Moonlight OS QUIC listening on UDP "sv
+                      << net::map_port(quic_transport::PORT);
+    } else {
+      BOOST_LOG(warning) << "Moonlight OS QUIC failed to initialize; using standard transports"sv;
+    }
   } else {
-    BOOST_LOG(warning) << "Moonlight OS QUIC failed to initialize; using vanilla transports"sv;
+    BOOST_LOG(info) << "Moonlight OS QUIC is disabled; using standard transports"sv;
   }
 #endif
 

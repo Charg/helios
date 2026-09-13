@@ -348,6 +348,34 @@ available.
 Allow new clients to start the PIN pairing flow. Disable this after pairing
 when the host should accept only clients that are already authorized.
 
+### enable_quic
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Enables the highly experimental Moonlight OS QUIC transport. When
+            both Helios and the client support it, RTSP, video, audio, control,
+            microphone, and camera traffic share one authenticated QUIC
+            connection. Keep this disabled for normal use: it may cause stream
+            startup freezes, dropped frames, missing audio, or increased
+            latency. Restart Helios after changing this option.
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            disabled
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            enable_quic = enabled
+            @endcode</td>
+    </tr>
+</table>
+
 ### enable_discovery
 
 Advertise this host for local-network discovery. Clients can still connect by
