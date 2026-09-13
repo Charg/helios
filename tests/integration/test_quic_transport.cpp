@@ -137,17 +137,24 @@ namespace {
     bool wait_for_datagram(std::string_view expected) {
       std::unique_lock lock(mutex_);
       const auto ready = changed_.wait_for(lock, 10s, [this] {
-        return datagram_received_.load() || failed_.load() || finished_.load();
+        return datagrams_received_.load() != 0 || failed_.load() || finished_.load();
       });
       return ready && std::string_view {
         reinterpret_cast<const char *>(received_datagram_.data()), received_datagram_.size()
       } == expected;
     }
 
+    bool wait_for_datagram_count(std::size_t expected) {
+      std::unique_lock lock(mutex_);
+      return changed_.wait_for(lock, 10s, [this, expected] {
+        return datagrams_received_.load() >= expected || failed_.load() || finished_.load();
+      }) && datagrams_received_.load() >= expected;
+    }
+
     void reset_datagram() {
       std::lock_guard lock(mutex_);
       received_datagram_.clear();
-      datagram_received_ = false;
+      datagrams_received_ = 0;
     }
 
     bool migrate() {
@@ -332,7 +339,7 @@ namespace {
             self->received_datagram_.assign(
               buffer->Buffer + MLOS_QUIC_DATAGRAM_HEADER_SIZE,
               buffer->Buffer + MLOS_QUIC_DATAGRAM_HEADER_SIZE + header.payloadLength);
-            self->datagram_received_ = true;
+            ++self->datagrams_received_;
           }
           self->changed_.notify_all();
           break;
@@ -366,7 +373,7 @@ namespace {
     std::atomic_bool server_certificate_valid_ {false};
     std::atomic_bool failed_ {false};
     std::atomic_bool finished_ {false};
-    std::atomic_bool datagram_received_ {false};
+    std::atomic_size_t datagrams_received_ {0};
     std::atomic_bool migration_requested_ {false};
     std::atomic_bool migrated_ {false};
     std::vector<std::uint8_t> auth_reply_;
@@ -434,6 +441,17 @@ TEST(QuicLiveLoopbackTests, AuthenticatesMigratesAndBridgesMediaDatagramsBothWay
   constexpr std::string_view response = "helios-to-client";
   ASSERT_EQ(media.send_to(boost::asio::buffer(response), bridge), response.size());
   ASSERT_TRUE(client.wait_for_datagram(response));
+
+  // Encoder IDR frames commonly arrive as bursts larger than MsQuic's
+  // internal datagram submission queue. Verify the bridge applies
+  // backpressure instead of silently truncating the burst around packet 61.
+  client.reset_datagram();
+  const std::string burst_packet(1200, 'I');
+  constexpr std::size_t burst_packets = 155;
+  for (std::size_t i = 0; i < burst_packets; ++i) {
+    ASSERT_EQ(media.send_to(boost::asio::buffer(burst_packet), bridge), burst_packet.size());
+  }
+  ASSERT_TRUE(client.wait_for_datagram_count(burst_packets));
 
   ASSERT_TRUE(client.migrate());
   client.reset_datagram();
