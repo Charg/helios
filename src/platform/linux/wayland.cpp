@@ -22,6 +22,7 @@
 #include "src/round_robin.h"
 #include "src/utility.h"
 #include "wayland.h"
+#include "wayland_hdr.h"
 
 extern const wl_interface wl_output_interface;
 
@@ -174,6 +175,19 @@ namespace wl {
       listener {
         &CLASS_CALL(interface_t, add_interface),
         &CLASS_CALL(interface_t, del_interface)
+      },
+      dmabuf_listener {
+        &CLASS_CALL(interface_t, dmabuf_format),
+        &CLASS_CALL(interface_t, dmabuf_modifier)
+      },
+      feedback_listener {
+        &CLASS_CALL(interface_t, feedback_done),
+        &CLASS_CALL(interface_t, feedback_format_table),
+        &CLASS_CALL(interface_t, feedback_main_device),
+        &CLASS_CALL(interface_t, feedback_tranche_done),
+        &CLASS_CALL(interface_t, feedback_tranche_target_device),
+        &CLASS_CALL(interface_t, feedback_tranche_formats),
+        &CLASS_CALL(interface_t, feedback_tranche_flags)
       } {
   }
 
@@ -208,9 +222,42 @@ namespace wl {
       this->interface[WLR_EXPORT_DMABUF] = true;
     } else if (!std::strcmp(interface, zwp_linux_dmabuf_v1_interface.name)) {
       BOOST_LOG(info) << "Found interface: "sv << interface << '(' << id << ") version "sv << version;
-      dmabuf_interface = (zwp_linux_dmabuf_v1 *) wl_registry_bind(registry, id, &zwp_linux_dmabuf_v1_interface, version);
+      // Compositors only send per-format modifiers to clients binding version 3 or lower,
+      // newer versions use feedback objects, which we don't need.
+      dmabuf_interface = (zwp_linux_dmabuf_v1 *) wl_registry_bind(registry, id, &zwp_linux_dmabuf_v1_interface, std::min(version, 3u));
+      zwp_linux_dmabuf_v1_add_listener(dmabuf_interface, &dmabuf_listener, this);
+
+      // Buffers have to be allocated on the device the compositor renders on, which is
+      // only reported through feedback. Bind a second, newer object just to ask for it.
+      if (version >= ZWP_LINUX_DMABUF_V1_GET_DEFAULT_FEEDBACK_SINCE_VERSION) {
+        auto feedback_interface = (zwp_linux_dmabuf_v1 *) wl_registry_bind(registry, id, &zwp_linux_dmabuf_v1_interface, version);
+        auto feedback = zwp_linux_dmabuf_v1_get_default_feedback(feedback_interface);
+        zwp_linux_dmabuf_feedback_v1_add_listener(feedback, &feedback_listener, this);
+      }
 
       this->interface[LINUX_DMABUF] = true;
+    }
+  }
+
+  void interface_t::dmabuf_modifier(
+    zwp_linux_dmabuf_v1 *,
+    std::uint32_t format,
+    std::uint32_t modifier_hi,
+    std::uint32_t modifier_lo
+  ) {
+    dmabuf_modifiers[format].push_back((std::uint64_t) modifier_hi << 32 | modifier_lo);
+  }
+
+  void interface_t::feedback_format_table(zwp_linux_dmabuf_feedback_v1 *, std::int32_t fd, std::uint32_t size) {
+    // We don't use the table, but we own the descriptor
+    close(fd);
+  }
+
+  void interface_t::feedback_main_device(zwp_linux_dmabuf_feedback_v1 *, wl_array *device) {
+    dev_t dev;
+    if (device->size == sizeof(dev)) {
+      std::memcpy(&dev, device->data, sizeof(dev));
+      main_device = dev;
     }
   }
 
@@ -218,18 +265,29 @@ namespace wl {
     BOOST_LOG(info) << "Delete: "sv << id;
   }
 
-  // Initialize GBM
-  bool dmabuf_t::init_gbm() {
-    if (gbm_device) {
-      return true;
+  // Open the render node of the compositor's device, or the first one available
+  int dmabuf_t::open_render_node() {
+    if (main_device) {
+      drmDevice *device = nullptr;
+      if (drmGetDeviceFromDevId(*main_device, 0, &device) == 0) {
+        int fd = -1;
+        if (device->available_nodes & (1 << DRM_NODE_RENDER)) {
+          fd = open(device->nodes[DRM_NODE_RENDER], O_RDWR);
+        }
+        drmFreeDevice(&device);
+        if (fd >= 0) {
+          return fd;
+        }
+      }
+
+      BOOST_LOG(warning) << "Couldn't open the compositor's render node, using the first available"sv;
     }
 
-    // Find render node
     drmDevice *devices[16];
     int n = drmGetDevices2(0, devices, 16);
     if (n <= 0) {
       BOOST_LOG(error) << "No DRM devices found"sv;
-      return false;
+      return -1;
     }
 
     int drm_fd = -1;
@@ -243,6 +301,16 @@ namespace wl {
     }
     drmFreeDevices(devices, n);
 
+    return drm_fd;
+  }
+
+  // Initialize GBM
+  bool dmabuf_t::init_gbm() {
+    if (gbm_device) {
+      return true;
+    }
+
+    int drm_fd = open_render_node();
     if (drm_fd < 0) {
       BOOST_LOG(error) << "Failed to open DRM render node"sv;
       return false;
@@ -290,10 +358,12 @@ namespace wl {
   void dmabuf_t::listen(
     zwlr_screencopy_manager_v1 *screencopy_manager,
     zwp_linux_dmabuf_v1 *dmabuf_interface,
+    const dmabuf_modifiers_t &modifiers,
     wl_output *output,
     bool blend_cursor
   ) {
     this->dmabuf_interface = dmabuf_interface;
+    this->modifiers = &modifiers;
     // Reset state
     shm_info.supported = false;
     dmabuf_info.supported = false;
@@ -375,8 +445,24 @@ namespace wl {
       return;
     }
 
-    // Create GBM buffer
-    current_bo = gbm_bo_create(gbm_device, dmabuf_info.width, dmabuf_info.height, dmabuf_info.format, GBM_BO_USE_RENDERING);
+    // Allocate with a modifier the compositor accepts. The driver's default pick may be
+    // one that the compositor's renderer can't render into (e.g. compressed 10-bit on NVIDIA).
+    std::vector<std::uint64_t> usable;
+    if (modifiers) {
+      if (auto advertised = modifiers->find(dmabuf_info.format); advertised != modifiers->end()) {
+        usable = hdr::filter_modifiers(advertised->second);
+      }
+    }
+
+    if (!usable.empty()) {
+      current_bo = gbm_bo_create_with_modifiers2(gbm_device, dmabuf_info.width, dmabuf_info.height, dmabuf_info.format, usable.data(), usable.size(), GBM_BO_USE_RENDERING);
+    }
+    if (!current_bo) {
+      if (!usable.empty()) {
+        BOOST_LOG(warning) << "Failed to create GBM buffer with advertised modifiers, falling back to driver default"sv;
+      }
+      current_bo = gbm_bo_create(gbm_device, dmabuf_info.width, dmabuf_info.height, dmabuf_info.format, GBM_BO_USE_RENDERING);
+    }
     if (!current_bo) {
       BOOST_LOG(error) << "Failed to create GBM buffer"sv;
       zwlr_screencopy_frame_v1_destroy(frame);
@@ -397,6 +483,7 @@ namespace wl {
 
     uint32_t stride = gbm_bo_get_stride(current_bo);
     uint64_t modifier = gbm_bo_get_modifier(current_bo);
+    BOOST_LOG(debug) << "Allocated DMA-BUF with modifier "sv << util::hex(modifier).to_string_view();
 
     // Store in surface descriptor for later use
     auto next_frame = get_next_frame();

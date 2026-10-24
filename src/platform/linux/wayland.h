@@ -6,6 +6,12 @@
 
 // standard includes
 #include <bitset>
+#include <map>
+#include <optional>
+#include <vector>
+
+// platform includes
+#include <sys/types.h>
 
 #ifdef SUNSHINE_BUILD_WAYLAND
   #include <linux-dmabuf-unstable-v1.h>
@@ -24,6 +30,9 @@
 
 namespace wl {
   using display_internal_t = util::safe_ptr<wl_display, wl_display_disconnect>;
+
+  /// DRM fourcc -> modifiers advertised by linux-dmabuf
+  using dmabuf_modifiers_t = std::map<std::uint32_t, std::vector<std::uint64_t>>;
 
   class frame_t {
   public:
@@ -49,7 +58,7 @@ namespace wl {
     dmabuf_t &operator=(const dmabuf_t &) = delete;
     dmabuf_t &operator=(dmabuf_t &&) = delete;
 
-    void listen(zwlr_screencopy_manager_v1 *screencopy_manager, zwp_linux_dmabuf_v1 *dmabuf_interface, wl_output *output, bool blend_cursor = false);
+    void listen(zwlr_screencopy_manager_v1 *screencopy_manager, zwp_linux_dmabuf_v1 *dmabuf_interface, const dmabuf_modifiers_t &modifiers, wl_output *output, bool blend_cursor = false);
     static void buffer_params_created(void *data, struct zwp_linux_buffer_params_v1 *params, struct wl_buffer *wl_buffer);
     static void buffer_params_failed(void *data, struct zwp_linux_buffer_params_v1 *params);
     void buffer(zwlr_screencopy_frame_v1 *frame, std::uint32_t format, std::uint32_t width, std::uint32_t height, std::uint32_t stride);
@@ -65,16 +74,19 @@ namespace wl {
     }
 
     status_e status;
+    std::optional<dev_t> main_device;  ///< DRM device the compositor renders on, if known
     std::array<frame_t, 2> frames;
     frame_t *current_frame;
     zwlr_screencopy_frame_v1_listener listener;
 
   private:
     bool init_gbm();
+    int open_render_node();
     void cleanup_gbm();
     void create_and_copy_dmabuf(zwlr_screencopy_frame_v1 *frame);
 
     zwp_linux_dmabuf_v1 *dmabuf_interface {nullptr};
+    const dmabuf_modifiers_t *modifiers {nullptr};
 
     struct {
       bool supported {false};
@@ -152,6 +164,15 @@ namespace wl {
     interface_t &operator=(interface_t &&) = delete;
 
     void listen(wl_registry *registry);
+    void dmabuf_format(zwp_linux_dmabuf_v1 *, std::uint32_t format) {}
+    void feedback_done(zwp_linux_dmabuf_feedback_v1 *) {}
+    void feedback_format_table(zwp_linux_dmabuf_feedback_v1 *, std::int32_t fd, std::uint32_t size);
+    void feedback_main_device(zwp_linux_dmabuf_feedback_v1 *, wl_array *device);
+    void feedback_tranche_done(zwp_linux_dmabuf_feedback_v1 *) {}
+    void feedback_tranche_target_device(zwp_linux_dmabuf_feedback_v1 *, wl_array *device) {}
+    void feedback_tranche_formats(zwp_linux_dmabuf_feedback_v1 *, wl_array *formats) {}
+    void feedback_tranche_flags(zwp_linux_dmabuf_feedback_v1 *, std::uint32_t flags) {}
+    void dmabuf_modifier(zwp_linux_dmabuf_v1 *, std::uint32_t format, std::uint32_t modifier_hi, std::uint32_t modifier_lo);
 
     bool operator[](interface_e bit) const {
       return interface[bit];
@@ -161,6 +182,8 @@ namespace wl {
     zwlr_screencopy_manager_v1 *screencopy_manager {nullptr};
     zwp_linux_dmabuf_v1 *dmabuf_interface {nullptr};
     zxdg_output_manager_v1 *output_manager {nullptr};
+    dmabuf_modifiers_t dmabuf_modifiers;
+    std::optional<dev_t> main_device;
 
   private:
     void add_interface(wl_registry *registry, std::uint32_t id, const char *interface, std::uint32_t version);
@@ -168,6 +191,8 @@ namespace wl {
 
     std::bitset<MAX_INTERFACES> interface;
     wl_registry_listener listener;
+    zwp_linux_dmabuf_v1_listener dmabuf_listener;
+    zwp_linux_dmabuf_feedback_v1_listener feedback_listener;
   };
 
   class display_t {
