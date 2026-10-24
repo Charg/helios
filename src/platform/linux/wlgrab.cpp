@@ -10,8 +10,10 @@
 #include "src/logging.h"
 #include "src/platform/common.h"
 #include "src/video.h"
+#include "sway_ipc.h"
 #include "vaapi.h"
 #include "wayland.h"
+#include "wayland_hdr.h"
 
 using namespace std::literals;
 
@@ -79,7 +81,31 @@ namespace wl {
       BOOST_LOG(debug) << "Resolution: "sv << width << 'x' << height;
       BOOST_LOG(debug) << "Desktop Resolution: "sv << env_width << 'x' << env_height;
 
+      output_name = monitor->name;
+
+      // The buffer format is only known once the compositor has described a frame,
+      // so take one to decide on HDR. This is cached until the next reinit.
+      std::shared_ptr<platf::img_t> probe_img;
+      wlr_t::snapshot({}, probe_img, 1000ms, false);
+      if (frame_fourcc == 0) {
+        refresh_hdr();
+      }
+
       return 0;
+    }
+
+    bool is_hdr() override {
+      return hdr_enabled;
+    }
+
+    bool get_hdr_metadata(SS_HDR_METADATA &metadata) override {
+      if (!hdr_enabled) {
+        std::memset(&metadata, 0, sizeof(metadata));
+        return false;
+      }
+
+      hdr::fill_metadata(metadata);
+      return true;
     }
 
     int dummy_img(platf::img_t *img) override {
@@ -90,7 +116,7 @@ namespace wl {
       auto to = std::chrono::steady_clock::now() + timeout;
 
       // Dispatch events until we get a new frame or the timeout expires
-      dmabuf.listen(interface.screencopy_manager, interface.dmabuf_interface, output, cursor);
+      dmabuf.listen(interface.screencopy_manager, interface.dmabuf_interface, interface.dmabuf_modifiers, output, cursor);
       do {
         auto remaining_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(to - std::chrono::steady_clock::now());
         if (remaining_time_ms.count() < 0 || !display.dispatch(remaining_time_ms)) {
@@ -108,7 +134,28 @@ namespace wl {
         return platf::capture_e::reinit;
       }
 
+      // The output switches between 8 and 10 bit buffers when HDR is toggled
+      if (frame_fourcc == 0) {
+        frame_fourcc = current_frame->sd.fourcc;
+        refresh_hdr();
+      } else if (current_frame->sd.fourcc != frame_fourcc) {
+        BOOST_LOG(info) << "Screencopy format changed from "sv << util::hex(frame_fourcc).to_string_view() << " to "sv << util::hex(current_frame->sd.fourcc).to_string_view();
+        return platf::capture_e::reinit;
+      }
+
       return platf::capture_e::ok;
+    }
+
+    /**
+     * @brief Decide whether the captured output is HDR from sway and the screencopy format.
+     */
+    void refresh_hdr() {
+      auto sway_hdr = sway_ipc::query_output_hdr(output_name);
+      hdr_enabled = sway_hdr.value_or(false) && hdr::is_10bit_fourcc(frame_fourcc);
+
+      BOOST_LOG(info) << "Output ["sv << output_name << "] HDR: "sv << (hdr_enabled ? "on"sv : "off"sv)
+                      << " (sway "sv << (sway_hdr ? (*sway_hdr ? "hdr"sv : "sdr"sv) : "unknown"sv)
+                      << ", format "sv << util::hex(frame_fourcc).to_string_view() << ')';
     }
 
     platf::mem_type_e mem_type;
@@ -120,6 +167,10 @@ namespace wl {
     dmabuf_t dmabuf;
 
     wl_output *output;
+    std::string output_name;
+
+    std::uint32_t frame_fourcc {};
+    bool hdr_enabled {};
   };
 
   class wlr_ram_t: public wlr_t {

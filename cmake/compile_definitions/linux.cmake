@@ -144,8 +144,11 @@ if(WAYLAND_FOUND)
 
     list(APPEND PLATFORM_LIBRARIES ${WAYLAND_LIBRARIES} gbm)
     list(APPEND PLATFORM_TARGET_FILES
+            "${CMAKE_SOURCE_DIR}/src/platform/linux/sway_ipc.h"
+            "${CMAKE_SOURCE_DIR}/src/platform/linux/sway_ipc.cpp"
             "${CMAKE_SOURCE_DIR}/src/platform/linux/wlgrab.cpp"
             "${CMAKE_SOURCE_DIR}/src/platform/linux/wayland.h"
+            "${CMAKE_SOURCE_DIR}/src/platform/linux/wayland_hdr.h"
             "${CMAKE_SOURCE_DIR}/src/platform/linux/wayland.cpp")
 endif()
 
