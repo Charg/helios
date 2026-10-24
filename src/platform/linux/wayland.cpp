@@ -572,6 +572,16 @@ namespace wl {
     current_frame->destroy();
     current_frame = get_next_frame();
 
+    // The compositor can send ready while its copy into the buffer is still running on
+    // the GPU, and not every importer waits on the buffer's fence, which shows up as
+    // black or torn frames. Polling a dmabuf for reading waits for its pending writes.
+    if (current_frame->sd.fds[0] >= 0) {
+      pollfd pfd {current_frame->sd.fds[0], POLLIN, 0};
+      if (poll(&pfd, 1, 100) == 0) {
+        BOOST_LOG(warning) << "Timed out waiting for the compositor to finish writing a frame"sv;
+      }
+    }
+
     // Keep the GBM buffer alive but destroy the Wayland objects
     if (current_wl_buffer) {
       wl_buffer_destroy(current_wl_buffer);
