@@ -33,11 +33,12 @@
   nlohmann_json,
   numactl,
   openssl,
-  sway,
+  callPackage,
   udevCheckHook,
   wayland,
 }:
 let
+  sway = callPackage ./sway.nix { };
   ffmpegPrebuilt = fetchzip {
     url = "https://github.com/LizardByte/build-deps/releases/download/v2026.516.30821/Linux-x86_64-ffmpeg.tar.gz";
     hash = "sha256-VT+4qP2FaizCoIBBbBkzbYw4YOvGhuBUoZxWL0IYVZo=";
@@ -199,6 +200,10 @@ stdenv.mkDerivation (finalAttrs: {
 
   doInstallCheck = true;
   nativeInstallCheckInputs = [ udevCheckHook ];
+
+  # The sway Helios launches; a NixOS config that starts its own headless sway
+  # can reuse it to get HDR virtual displays.
+  passthru.sway = sway;
 
   meta = {
     description = "Game stream host for Selene and Moonlight OS";
