@@ -20,40 +20,62 @@ using namespace std::literals;
 namespace platf::mouse {
 
   void move(input_raw_t *raw, int deltaX, int deltaY) {
+#ifdef SUNSHINE_BUILD_WAYLAND
+    if (raw->compositor) {
+      raw->compositor->move(deltaX, deltaY);
+      return;
+    }
+#endif
     if (raw->mouse) {
       (*raw->mouse).move(deltaX, deltaY);
     }
   }
 
   void move_abs(input_raw_t *raw, const touch_port_t &touch_port, float x, float y) {
+#ifdef SUNSHINE_BUILD_WAYLAND
+    if (raw->compositor) {
+      // x and y are relative to the streamed output; Sway maps the pointer over its whole layout.
+      raw->compositor->move_abs(touch_port.offset_x + (int) x, touch_port.offset_y + (int) y,
+                                touch_port.width, touch_port.height);
+      return;
+    }
+#endif
     if (raw->mouse) {
       (*raw->mouse).move_abs(x, y, touch_port.width, touch_port.height);
     }
   }
 
   void button(input_raw_t *raw, int button, bool release) {
+    inputtino::Mouse::MOUSE_BUTTON btn_type;
+    switch (button) {
+      case BUTTON_LEFT:
+        btn_type = inputtino::Mouse::LEFT;
+        break;
+      case BUTTON_MIDDLE:
+        btn_type = inputtino::Mouse::MIDDLE;
+        break;
+      case BUTTON_RIGHT:
+        btn_type = inputtino::Mouse::RIGHT;
+        break;
+      case BUTTON_X1:
+        btn_type = inputtino::Mouse::SIDE;
+        break;
+      case BUTTON_X2:
+        btn_type = inputtino::Mouse::EXTRA;
+        break;
+      default:
+        BOOST_LOG(warning) << "Unknown mouse button: " << button;
+        return;
+    }
+#ifdef SUNSHINE_BUILD_WAYLAND
+    if (raw->compositor) {
+      // Indexed by inputtino::Mouse::MOUSE_BUTTON.
+      static constexpr int linux_buttons[] {BTN_LEFT, BTN_MIDDLE, BTN_RIGHT, BTN_SIDE, BTN_EXTRA};
+      raw->compositor->button(linux_buttons[btn_type], !release);
+      return;
+    }
+#endif
     if (raw->mouse) {
-      inputtino::Mouse::MOUSE_BUTTON btn_type;
-      switch (button) {
-        case BUTTON_LEFT:
-          btn_type = inputtino::Mouse::LEFT;
-          break;
-        case BUTTON_MIDDLE:
-          btn_type = inputtino::Mouse::MIDDLE;
-          break;
-        case BUTTON_RIGHT:
-          btn_type = inputtino::Mouse::RIGHT;
-          break;
-        case BUTTON_X1:
-          btn_type = inputtino::Mouse::SIDE;
-          break;
-        case BUTTON_X2:
-          btn_type = inputtino::Mouse::EXTRA;
-          break;
-        default:
-          BOOST_LOG(warning) << "Unknown mouse button: " << button;
-          return;
-      }
       if (release) {
         (*raw->mouse).release(btn_type);
       } else {
@@ -63,12 +85,24 @@ namespace platf::mouse {
   }
 
   void scroll(input_raw_t *raw, int high_res_distance) {
+#ifdef SUNSHINE_BUILD_WAYLAND
+    if (raw->compositor) {
+      raw->compositor->scroll(high_res_distance);
+      return;
+    }
+#endif
     if (raw->mouse) {
       (*raw->mouse).vertical_scroll(high_res_distance);
     }
   }
 
   void hscroll(input_raw_t *raw, int high_res_distance) {
+#ifdef SUNSHINE_BUILD_WAYLAND
+    if (raw->compositor) {
+      raw->compositor->hscroll(high_res_distance);
+      return;
+    }
+#endif
     if (raw->mouse) {
       (*raw->mouse).horizontal_scroll(high_res_distance);
     }

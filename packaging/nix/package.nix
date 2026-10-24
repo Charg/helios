@@ -25,6 +25,7 @@
   libpulseaudio,
   libva,
   libx11,
+  libxkbcommon,
   libxcb,
   libxfixes,
   libxrandr,
@@ -134,6 +135,7 @@ stdenv.mkDerivation (finalAttrs: {
     libpulseaudio
     libva
     libx11
+    libxkbcommon
     libxcb
     libxfixes
     libxrandr

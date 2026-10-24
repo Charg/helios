@@ -196,6 +196,7 @@ function add_arch_deps() {
     'openssl'
     'opus'
     'udev'
+    'libxkbcommon'
     'wayland'
   )
 
@@ -238,6 +239,7 @@ function add_debian_based_deps() {
     "libpulse-dev"
     "libssl-dev"
     "libwayland-dev"  # Wayland
+    "libxkbcommon-dev"  # Wayland virtual keyboard
     "libx11-dev"  # X11
     "libxcb-shm0-dev"  # X11
     "libxcb-xfixes0-dev"  # X11
@@ -307,6 +309,7 @@ function add_fedora_deps() {
     "libXinerama-devel"  # X11
     "libXrandr-devel"  # X11
     "libXtst-devel"  # X11
+    "libxkbcommon-devel"  # Wayland virtual keyboard
     "mesa-libGL-devel"
     "mesa-libgbm-devel"
     "miniupnpc-devel"

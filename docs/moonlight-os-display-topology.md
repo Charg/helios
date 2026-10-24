@@ -37,6 +37,15 @@ headless outputs there. If none exists and the optional Sway runtime is
 installed, Helios starts a private headless compositor before it loads the app
 environment, then launches streamed applications into that isolated desktop.
 
+Keyboard and mouse input for a Sway session is injected through Sway's
+`zwp_virtual_keyboard_v1` and `zwlr_virtual_pointer_v1` protocols rather than
+uinput. uinput devices belong to the kernel seat, so another desktop on the
+host, such as GNOME, would receive them while the headless Sway would not.
+The virtual keyboard uses the XKB keymap from `XKB_DEFAULT_*`, falling back to
+`us`. Sway has no virtual touch or tablet protocol, so Helios stops
+advertising pen and touch support and clients send touch as mouse input.
+Gamepads remain uinput devices because games read them directly.
+
 Selene keeps display index 0 as the topology owner and starts one auxiliary
 video session for every other client output. Keyboard, pointer, and touch input
 belong to whichever display window has focus; Helios maps that session through

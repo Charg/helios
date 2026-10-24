@@ -61,6 +61,7 @@ set(CPACK_DEBIAN_PACKAGE_DEPENDS "\
             libva-drm2, \
             libwayland-client0, \
             libx11-6, \
+            libxkbcommon0, \
             miniupnpc, \
             openssl | libssl3")
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "open-iscsi, sway, usbip | linux-tools-generic")
@@ -78,6 +79,7 @@ set(CPACK_RPM_PACKAGE_REQUIRES "\
             libva >= 2.14.0, \
             libwayland-client >= 1.20.0, \
             libX11 >= 1.7.3.1, \
+            libxkbcommon, \
             iscsi-initiator-utils, \
             mesa-libgbm >= 25.0.7, \
             miniupnpc >= 2.2.4, \

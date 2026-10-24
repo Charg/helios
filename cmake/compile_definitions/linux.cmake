@@ -135,17 +135,25 @@ if(WAYLAND_FOUND)
     GEN_WAYLAND("${WAYLAND_PROTOCOLS_DIR}" "unstable/xdg-output" xdg-output-unstable-v1)
     GEN_WAYLAND("${WAYLAND_PROTOCOLS_DIR}" "unstable/linux-dmabuf" linux-dmabuf-unstable-v1)
     GEN_WAYLAND("${CMAKE_SOURCE_DIR}/third-party/wlr-protocols" "unstable" wlr-screencopy-unstable-v1)
+    GEN_WAYLAND("${CMAKE_SOURCE_DIR}/third-party/wlr-protocols" "unstable" wlr-virtual-pointer-unstable-v1)
+    # Ships with wlroots rather than wayland-protocols or wlr-protocols.
+    GEN_WAYLAND("${CMAKE_SOURCE_DIR}/third-party" "wlroots-protocols" virtual-keyboard-unstable-v1)
+
+    pkg_check_modules(XKBCOMMON xkbcommon REQUIRED)
 
     include_directories(
             SYSTEM
             ${WAYLAND_INCLUDE_DIRS}
+            ${XKBCOMMON_INCLUDE_DIRS}
             ${CMAKE_BINARY_DIR}/generated-src
     )
 
-    list(APPEND PLATFORM_LIBRARIES ${WAYLAND_LIBRARIES} gbm)
+    list(APPEND PLATFORM_LIBRARIES ${WAYLAND_LIBRARIES} ${XKBCOMMON_LIBRARIES} gbm)
     list(APPEND PLATFORM_TARGET_FILES
             "${CMAKE_SOURCE_DIR}/src/platform/linux/sway_ipc.h"
             "${CMAKE_SOURCE_DIR}/src/platform/linux/sway_ipc.cpp"
+            "${CMAKE_SOURCE_DIR}/src/platform/linux/input/wlr_virtual_input.h"
+            "${CMAKE_SOURCE_DIR}/src/platform/linux/input/wlr_virtual_input.cpp"
             "${CMAKE_SOURCE_DIR}/src/platform/linux/wlgrab.cpp"
             "${CMAKE_SOURCE_DIR}/src/platform/linux/wayland.h"
             "${CMAKE_SOURCE_DIR}/src/platform/linux/wayland_hdr.h"

@@ -36,6 +36,7 @@ BuildRequires: libXi-devel
 BuildRequires: libXinerama-devel
 BuildRequires: libXrandr-devel
 BuildRequires: libXtst-devel
+BuildRequires: libxkbcommon-devel
 BuildRequires: git
 BuildRequires: mesa-libGL-devel
 BuildRequires: mesa-libgbm-devel
@@ -81,6 +82,7 @@ Requires: libopusenc >= 0.2.1
 Requires: libva >= 2.14.0
 Requires: libwayland-client >= 1.20.0
 Requires: libX11 >= 1.7.3.1
+Requires: libxkbcommon
 Requires: iscsi-initiator-utils
 Requires: miniupnpc >= 2.2.4
 Requires: numactl-libs >= 2.0.14

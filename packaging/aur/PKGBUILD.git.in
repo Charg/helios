@@ -16,7 +16,7 @@ depends=(
   'avahi' 'boost-libs' 'curl' 'gcc-libs' 'libayatana-appindicator' 'libcap'
   'libdrm' 'libevdev' 'libmfx' 'libnotify' 'libpulse' 'libva' 'libx11'
   'libxcb' 'libxfixes' 'libxrandr' 'libxtst' 'miniupnpc' 'msquic' 'numactl'
-  'open-iscsi' 'openssl' 'opus' 'systemd-libs' 'udev' 'usbip' 'wayland' 'which'
+  'open-iscsi' 'openssl' 'opus' 'systemd-libs' 'udev' 'usbip' 'wayland' 'libxkbcommon' 'which'
 )
 makedepends=(
   'appstream' 'appstream-glib' 'boost' 'cmake' 'desktop-file-utils' 'git'

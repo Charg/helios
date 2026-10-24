@@ -15,6 +15,10 @@
 #include "src/platform/common.h"
 #include "src/utility.h"
 
+#ifdef SUNSHINE_BUILD_WAYLAND
+  #include "wlr_virtual_input.h"
+#endif
+
 using namespace std::literals;
 
 namespace platf {
@@ -27,30 +31,52 @@ namespace platf {
     gamepad_feedback_msg_t last_rgb_led;
   };
 
+  /**
+   * @brief Whether keyboard, mouse, touch and pen go to a compositor instead of uinput.
+   */
+  inline bool compositor_input() {
+#ifdef SUNSHINE_BUILD_WAYLAND
+    return wlr_input::active();
+#else
+    return false;
+#endif
+  }
+
   struct input_raw_t {
     input_raw_t():
-        mouse(inputtino::Mouse::create({
+#ifdef SUNSHINE_BUILD_WAYLAND
+        compositor(wlr_input::virtual_input_t::connect()),
+#endif
+        mouse(compositor_input() ? inputtino::Error("routed to the compositor") : inputtino::Mouse::create({
           .name = "Mouse passthrough",
           .vendor_id = 0xBEEF,
           .product_id = 0xDEAD,
           .version = 0x111,
         })),
-        keyboard(inputtino::Keyboard::create({
+        keyboard(compositor_input() ? inputtino::Error("routed to the compositor") : inputtino::Keyboard::create({
           .name = "Keyboard passthrough",
           .vendor_id = 0xBEEF,
           .product_id = 0xDEAD,
           .version = 0x111,
         })),
         gamepads(MAX_GAMEPADS) {
-      if (!mouse) {
+      if (!mouse && !compositor_input()) {
         BOOST_LOG(warning) << "Unable to create virtual mouse: " << mouse.getErrorMessage();
       }
-      if (!keyboard) {
+      if (!keyboard && !compositor_input()) {
         BOOST_LOG(warning) << "Unable to create virtual keyboard: " << keyboard.getErrorMessage();
       }
     }
 
     ~input_raw_t() = default;
+
+#ifdef SUNSHINE_BUILD_WAYLAND
+    /**
+     * Keyboard and pointer inside Helios's Sway session. uinput devices would
+     * reach every desktop on the seat, such as a GNOME session beside Sway.
+     */
+    std::unique_ptr<wlr_input::virtual_input_t> compositor;
+#endif
 
     // All devices are wrapped in Result because it might be that we aren't able to create them (ex: udev permission denied)
     inputtino::Result<inputtino::Mouse> mouse;
@@ -65,23 +91,25 @@ namespace platf {
 
   struct client_input_raw_t: public client_input_t {
     client_input_raw_t(input_t &input):
-        touch(inputtino::TouchScreen::create({
+        // Sway has no virtual touch or tablet protocol, and uinput devices
+        // would reach the host's other desktop instead.
+        touch(compositor_input() ? inputtino::Error("unavailable with compositor input") : inputtino::TouchScreen::create({
           .name = "Touch passthrough",
           .vendor_id = 0xBEEF,
           .product_id = 0xDEAD,
           .version = 0x111,
         })),
-        pen(inputtino::PenTablet::create({
+        pen(compositor_input() ? inputtino::Error("unavailable with compositor input") : inputtino::PenTablet::create({
           .name = "Pen passthrough",
           .vendor_id = 0xBEEF,
           .product_id = 0xDEAD,
           .version = 0x111,
         })) {
       global = (input_raw_t *) input.get();
-      if (!touch) {
+      if (!touch && !compositor_input()) {
         BOOST_LOG(warning) << "Unable to create virtual touch screen: " << touch.getErrorMessage();
       }
-      if (!pen) {
+      if (!pen && !compositor_input()) {
         BOOST_LOG(warning) << "Unable to create virtual pen tablet: " << pen.getErrorMessage();
       }
     }

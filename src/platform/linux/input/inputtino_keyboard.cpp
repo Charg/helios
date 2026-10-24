@@ -5,6 +5,7 @@
 // lib includes
 #include <boost/locale.hpp>
 #include <inputtino/input.hpp>
+#include <inputtino/keyboard.hpp>
 #include <libevdev/libevdev.h>
 
 // local includes
@@ -148,7 +149,19 @@ namespace platf::keyboard {
     {KEY_102ND, 0xE2}
   };
 
-  void update(input_raw_t *raw, uint16_t modcode, bool release, uint8_t flags) {
+  /**
+   * Press or release a Moonlight keyboard code on whichever keyboard is active.
+   */
+  static void send_key(input_raw_t *raw, short modcode, bool release) {
+#ifdef SUNSHINE_BUILD_WAYLAND
+    if (raw->compositor) {
+      auto key = inputtino::keyboard::key_mappings.find(modcode);
+      if (key != inputtino::keyboard::key_mappings.end()) {
+        raw->compositor->key(key->second.linux_code, !release);
+      }
+      return;
+    }
+#endif
     if (raw->keyboard) {
       if (release) {
         (*raw->keyboard).release(modcode);
@@ -158,8 +171,12 @@ namespace platf::keyboard {
     }
   }
 
+  void update(input_raw_t *raw, uint16_t modcode, bool release, uint8_t flags) {
+    send_key(raw, modcode, release);
+  }
+
   void unicode(input_raw_t *raw, char *utf8, int size) {
-    if (raw->keyboard) {
+    if (raw->keyboard || compositor_input()) {
       /* Reading input text as UTF-8 */
       auto utf8_str = boost::locale::conv::to_utf<wchar_t>(utf8, utf8 + size, "UTF-8");
       /* Converting to UTF-32 */
@@ -169,10 +186,10 @@ namespace platf::keyboard {
       BOOST_LOG(debug) << "Unicode, typing U+"sv << hex_unicode;
 
       /* pressing <CTRL> + <SHIFT> + U */
-      (*raw->keyboard).press(0xA2);  // LEFTCTRL
-      (*raw->keyboard).press(0xA0);  // LEFTSHIFT
-      (*raw->keyboard).press(0x55);  // U
-      (*raw->keyboard).release(0x55);  // U
+      send_key(raw, 0xA2, false);  // LEFTCTRL
+      send_key(raw, 0xA0, false);  // LEFTSHIFT
+      send_key(raw, 0x55, false);  // U
+      send_key(raw, 0x55, true);  // U
 
       /* input each HEX character */
       for (auto &ch : hex_unicode) {
@@ -182,14 +199,14 @@ namespace platf::keyboard {
         if (keycode == -1 || wincode == key_mappings.end()) {
           BOOST_LOG(warning) << "Unicode, unable to find keycode for: "sv << ch;
         } else {
-          (*raw->keyboard).press(wincode->second);
-          (*raw->keyboard).release(wincode->second);
+          send_key(raw, wincode->second, false);
+          send_key(raw, wincode->second, true);
         }
       }
 
       /* releasing <SHIFT> and <CTRL> */
-      (*raw->keyboard).release(0xA0);  // LEFTSHIFT
-      (*raw->keyboard).release(0xA2);  // LEFTCTRL
+      send_key(raw, 0xA0, true);  // LEFTSHIFT
+      send_key(raw, 0xA2, true);  // LEFTCTRL
     }
   }
 }  // namespace platf::keyboard

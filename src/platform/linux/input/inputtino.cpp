@@ -114,7 +114,8 @@ namespace platf {
     caps |= platform_caps::microphone_uplink;
     if (virtual_camera_available()) caps |= platform_caps::camera_uplink;
     // TODO: if has_uinput
-    caps |= platform_caps::pen_touch;
+    // Without pen and touch devices, clients send touch as mouse input instead.
+    if (!compositor_input()) caps |= platform_caps::pen_touch;
 
     // We support controller touchpad input only when emulating the PS5 controller
     if (config::input.gamepad == "ds5"sv || config::input.gamepad == "auto"sv) {

@@ -33,6 +33,7 @@ depends=(
   'libx11'
   'libxcb'
   'libxfixes'
+  'libxkbcommon'
   'libxrandr'
   'libxtst'
   'miniupnpc'
