@@ -241,6 +241,7 @@ list(APPEND PLATFORM_TARGET_FILES
         "${CMAKE_SOURCE_DIR}/src/platform/linux/audio.cpp"
         "${CMAKE_SOURCE_DIR}/src/platform/linux/camera.cpp"
         "${CMAKE_SOURCE_DIR}/src/platform/linux/client_topology.cpp"
+        "${CMAKE_SOURCE_DIR}/src/platform/linux/sway_hdr.h"
         "${CMAKE_SOURCE_DIR}/third-party/glad/src/egl.c"
         "${CMAKE_SOURCE_DIR}/third-party/glad/src/gl.c"
         "${CMAKE_SOURCE_DIR}/third-party/glad/include/EGL/eglplatform.h"

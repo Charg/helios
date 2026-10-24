@@ -22,7 +22,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include "src/config.h"
 #include "src/logging.h"
+#include "src/platform/linux/sway_hdr.h"
 
 using namespace std::literals;
 
@@ -77,6 +79,26 @@ namespace platf {
       return output;
     }
 
+    std::vector<sway_hdr::render_node_t> render_nodes() {
+      std::vector<sway_hdr::render_node_t> nodes;
+      std::error_code error;
+      for (std::filesystem::directory_iterator it("/sys/class/drm", error), end;
+           !error && it != end; it.increment(error)) {
+        const auto name = it->path().filename().string();
+        if (!name.starts_with("renderD")) continue;
+        std::error_code link_error;
+        auto driver = std::filesystem::read_symlink(it->path() / "device/driver", link_error);
+        if (link_error) continue;
+        nodes.push_back({"/dev/dri/" + name, driver.filename().string()});
+      }
+      return nodes;
+    }
+
+    std::string env_or_empty(const char *name) {
+      const char *value = std::getenv(name);
+      return value ? value : "";
+    }
+
     std::set<std::string> wayland_sockets(const std::filesystem::path &runtime_dir) {
       std::set<std::string> sockets;
       std::error_code error;
@@ -116,6 +138,18 @@ namespace platf {
       }
 
       bool start() {
+        // HDR outputs need the Vulkan renderer; fall back to GLES2 (SDR only)
+        // if the compositor cannot start with it.
+        if (start(false)) return true;
+        if (!env_or_empty("WLR_RENDERER").empty()) return false;
+        BOOST_LOG(warning) << "Sway failed to start with the Vulkan renderer, retrying with GLES2; HDR virtual displays are unavailable"sv;
+        return start(true);
+      }
+
+      const std::string &socket() const { return socket_; }
+
+    private:
+      bool start(bool gles_fallback) {
         const char *runtime = std::getenv("XDG_RUNTIME_DIR");
         if (!runtime || !*runtime) return false;
         const std::filesystem::path runtime_dir(runtime);
@@ -125,6 +159,9 @@ namespace platf {
           return false;
         }
         const auto before = wayland_sockets(runtime_dir);
+        const auto compositor_env = sway_hdr::select_compositor_env(
+          env_or_empty("WLR_RENDERER"), env_or_empty("WLR_RENDER_DRM_DEVICE"),
+          config::video.adapter_name, config::video.encoder, render_nodes(), gles_fallback);
 
         pid_ = fork();
         if (pid_ < 0) return false;
@@ -133,6 +170,9 @@ namespace platf {
           setenv("WLR_BACKENDS", "headless", 1);
           setenv("WLR_HEADLESS_OUTPUTS", "1", 1);
           setenv("WLR_LIBINPUT_NO_DEVICES", "1", 1);
+          for (const auto &[name, value] : compositor_env.vars) {
+            setenv(name.c_str(), value.c_str(), 1);
+          }
           int null_fd = open("/dev/null", O_RDWR);
           if (null_fd >= 0) {
             dup2(null_fd, STDIN_FILENO);
@@ -174,9 +214,6 @@ namespace platf {
         return false;
       }
 
-      const std::string &socket() const { return socket_; }
-
-    private:
       pid_t pid_ = -1;
       std::string socket_;
       std::string wayland_display_;
@@ -228,6 +265,21 @@ namespace platf {
       }
     }
 
+    // Ask sway to switch HDR on or off for an output. HDR is best effort: stock
+    // wlroots headless outputs, the GLES2 renderer and older sway builds cannot
+    // do it, in which case the output stays SDR.
+    void apply_hdr(std::string_view socket, const std::string &output, bool enable) {
+      command_succeeded(sway_hdr::hdr_command(output, enable), socket);
+      if (!enable) return;
+      auto outputs = run_swaymsg({"-r", "-t", "get_outputs"}, socket);
+      if (outputs && sway_hdr::output_hdr_enabled(*outputs, output).value_or(false)) return;
+      static std::once_flag warned;
+      std::call_once(warned, [&] {
+        BOOST_LOG(info) << "Client requested HDR for "sv << output
+                        << " but sway cannot enable it (needs the Vulkan renderer and a wlroots with HDR headless outputs); continuing in SDR"sv;
+      });
+    }
+
     class sway_topology_t final: public virtual_display_topology_t {
     public:
       explicit sway_topology_t(std::string socket): socket_(std::move(socket)) {}
@@ -264,6 +316,7 @@ namespace platf {
                                   "scale", scale}, socket_)) {
             return false;
           }
+          apply_hdr(socket_, owned_[i], display.hdr);
         }
         active_count_ = displays.size();
         return true;
