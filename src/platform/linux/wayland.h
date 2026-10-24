@@ -7,7 +7,11 @@
 // standard includes
 #include <bitset>
 #include <map>
+#include <optional>
 #include <vector>
+
+// platform includes
+#include <sys/types.h>
 
 #ifdef SUNSHINE_BUILD_WAYLAND
   #include <linux-dmabuf-unstable-v1.h>
@@ -70,12 +74,14 @@ namespace wl {
     }
 
     status_e status;
+    std::optional<dev_t> main_device;  ///< DRM device the compositor renders on, if known
     std::array<frame_t, 2> frames;
     frame_t *current_frame;
     zwlr_screencopy_frame_v1_listener listener;
 
   private:
     bool init_gbm();
+    int open_render_node();
     void cleanup_gbm();
     void create_and_copy_dmabuf(zwlr_screencopy_frame_v1 *frame);
 
@@ -159,6 +165,13 @@ namespace wl {
 
     void listen(wl_registry *registry);
     void dmabuf_format(zwp_linux_dmabuf_v1 *, std::uint32_t format) {}
+    void feedback_done(zwp_linux_dmabuf_feedback_v1 *) {}
+    void feedback_format_table(zwp_linux_dmabuf_feedback_v1 *, std::int32_t fd, std::uint32_t size);
+    void feedback_main_device(zwp_linux_dmabuf_feedback_v1 *, wl_array *device);
+    void feedback_tranche_done(zwp_linux_dmabuf_feedback_v1 *) {}
+    void feedback_tranche_target_device(zwp_linux_dmabuf_feedback_v1 *, wl_array *device) {}
+    void feedback_tranche_formats(zwp_linux_dmabuf_feedback_v1 *, wl_array *formats) {}
+    void feedback_tranche_flags(zwp_linux_dmabuf_feedback_v1 *, std::uint32_t flags) {}
     void dmabuf_modifier(zwp_linux_dmabuf_v1 *, std::uint32_t format, std::uint32_t modifier_hi, std::uint32_t modifier_lo);
 
     bool operator[](interface_e bit) const {
@@ -170,6 +183,7 @@ namespace wl {
     zwp_linux_dmabuf_v1 *dmabuf_interface {nullptr};
     zxdg_output_manager_v1 *output_manager {nullptr};
     dmabuf_modifiers_t dmabuf_modifiers;
+    std::optional<dev_t> main_device;
 
   private:
     void add_interface(wl_registry *registry, std::uint32_t id, const char *interface, std::uint32_t version);
@@ -178,6 +192,7 @@ namespace wl {
     std::bitset<MAX_INTERFACES> interface;
     wl_registry_listener listener;
     zwp_linux_dmabuf_v1_listener dmabuf_listener;
+    zwp_linux_dmabuf_feedback_v1_listener feedback_listener;
   };
 
   class display_t {

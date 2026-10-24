@@ -82,6 +82,7 @@ namespace wl {
       BOOST_LOG(debug) << "Desktop Resolution: "sv << env_width << 'x' << env_height;
 
       output_name = monitor->name;
+      dmabuf.main_device = interface.main_device;
 
       // The buffer format is only known once the compositor has described a frame,
       // so take one to decide on HDR. This is cached until the next reinit.
